@@ -63,7 +63,7 @@ func Markdown(d *doc.Doc, printRequired bool) (string, error) {
 	if len(d.DataProviders) > 0 {
 		buf.WriteString("| Type | Name |\n")
 		buf.WriteString("|------|------|\n")
-		for _, v := range d.Resources {
+		for _, v := range d.DataProviders {
 			buf.WriteString(fmt.Sprintf("| <div id='data.%s'></div> `%s` | %s |\n",
 				fmt.Sprintf("%s.%s", v.Name, v.Label),
 				v.Name,
