@@ -1,12 +1,13 @@
 package doc
 
 import (
-	"path"
+	"bytes"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/hashicorp/hcl/hcl/ast"
+	"github.com/hashicorp/hcl/hcl/printer"
 )
 
 // Input represents a terraform input variable.
@@ -45,11 +46,40 @@ type Output struct {
 	Description string
 }
 
+// Resource represents a terraform resource.
+type Resource struct {
+	Name        string
+	Label       string
+	Description string
+}
+
+// Resource respresents a terraform data provider.
+type DataProvider struct {
+	Name        string
+	Label       string
+	Description string
+}
+
+// Resource represents a terraform aws iam policy document.
+type IamPolicy struct {
+	Name        string
+	Policy      string
+	Description string
+}
+
 // Doc represents a terraform module doc.
 type Doc struct {
-	Comment string
-	Inputs  []Input
-	Outputs []Output
+	Intro              []string
+	InputsIntro        []string
+	Inputs             []Input
+	OutputsInto        []string
+	Outputs            []Output
+	ResourcesIntro     []string
+	Resources          []Resource
+	DataProvidersIntro []string
+	DataProviders      []DataProvider
+	IamPoliciesIntro   []string
+	IamPolicies        []IamPolicy
 }
 
 type inputsByName []Input
@@ -64,26 +94,144 @@ func (a outputsByName) Len() int           { return len(a) }
 func (a outputsByName) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a outputsByName) Less(i, j int) bool { return a[i].Name < a[j].Name }
 
+type resourceByName []Resource
+
+func (a resourceByName) Len() int           { return len(a) }
+func (a resourceByName) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a resourceByName) Less(i, j int) bool { return a[i].Name < a[j].Name }
+
+type dataProviderByName []DataProvider
+
+func (a dataProviderByName) Len() int           { return len(a) }
+func (a dataProviderByName) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a dataProviderByName) Less(i, j int) bool { return a[i].Name < a[j].Name }
+
+type iamPoliciesByName []IamPolicy
+
+func (a iamPoliciesByName) Len() int           { return len(a) }
+func (a iamPoliciesByName) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a iamPoliciesByName) Less(i, j int) bool { return a[i].Name < a[j].Name }
+
 // Create creates a new *Doc from the supplied map
 // of filenames and *ast.File.
 func Create(files map[string]*ast.File) *Doc {
 	doc := new(Doc)
 
-	for name, f := range files {
+	for _, f := range files {
 		list := f.Node.(*ast.ObjectList)
+		doc.Intro = append(doc.Intro, intro(f.Comments, "")...)
 		doc.Inputs = append(doc.Inputs, inputs(list)...)
+		doc.InputsIntro = append(doc.InputsIntro, intro(f.Comments, "input")...)
 		doc.Outputs = append(doc.Outputs, outputs(list)...)
-
-		filename := path.Base(name)
-		comments := f.Comments
-
-		if filename == "main.tf" && len(comments) > 0 {
-			doc.Comment = header(comments[0])
-		}
+		doc.OutputsInto = append(doc.OutputsInto, intro(f.Comments, "output")...)
+		doc.Resources = append(doc.Resources, resources(list)...)
+		doc.ResourcesIntro = append(doc.ResourcesIntro, intro(f.Comments, "resource")...)
+		doc.DataProviders = append(doc.DataProviders, dataProviders(list)...)
+		doc.DataProvidersIntro = append(doc.DataProvidersIntro, intro(f.Comments, "data-provider")...)
+		doc.IamPolicies = append(doc.IamPolicies, iamPolicies(list)...)
+		doc.IamPoliciesIntro = append(doc.IamPoliciesIntro, intro(f.Comments, "iam-policy")...)
 	}
+
 	sort.Sort(inputsByName(doc.Inputs))
 	sort.Sort(outputsByName(doc.Outputs))
+	sort.Sort(resourceByName(doc.Resources))
+	sort.Sort(dataProviderByName(doc.DataProviders))
+	sort.Sort(iamPoliciesByName(doc.IamPolicies))
 	return doc
+}
+
+func intro(comments []*ast.CommentGroup, category string) []string {
+	ret := []string{}
+	for _, c := range comments {
+		data := comment(c.List)
+		lines := strings.SplitN(data, "\n", 2)
+		if len(lines) < 2 {
+			continue
+		}
+
+		if strings.HasPrefix(lines[0], "@doc("+category+")") {
+			ret = append(ret, lines[1])
+		}
+	}
+
+	return ret
+}
+
+func iamPolicies(list *ast.ObjectList) []IamPolicy {
+	var ret []IamPolicy
+
+	for _, item := range list.Items {
+		if !is(item, "data") {
+			continue
+		}
+
+		if unquote(item.Keys[1].Token.Text) == "aws_iam_policy_document" {
+			policyBuf := bytes.NewBufferString("")
+			name, _ := strconv.Unquote(item.Keys[2].Token.Text)
+			printer.Fprint(policyBuf, item.Val)
+
+			comm := ""
+			if item.LeadComment != nil {
+				comm = comment(item.LeadComment.List)
+			}
+
+			ret = append(ret, IamPolicy{
+				Name:        name,
+				Description: comm,
+				Policy:      policyBuf.String(),
+			})
+		}
+	}
+
+	return ret
+}
+
+func resources(list *ast.ObjectList) []Resource {
+	var ret []Resource
+
+	for _, item := range list.Items {
+		if is(item, "resource") {
+			name, _ := strconv.Unquote(item.Keys[1].Token.Text)
+			label, _ := strconv.Unquote(item.Keys[2].Token.Text)
+			comm := ""
+
+			if item.LeadComment != nil {
+				comm = comment(item.LeadComment.List)
+			}
+
+			ret = append(ret, Resource{
+				Name:        name,
+				Label:       label,
+				Description: comm,
+			})
+		}
+	}
+
+	return ret
+}
+
+func dataProviders(list *ast.ObjectList) []DataProvider {
+	var ret []DataProvider
+
+	for _, item := range list.Items {
+		if is(item, "data") {
+			name, _ := strconv.Unquote(item.Keys[1].Token.Text)
+			label, _ := strconv.Unquote(item.Keys[2].Token.Text)
+			comm := ""
+
+			if item.LeadComment != nil {
+				comm = comment(item.LeadComment.List)
+			}
+
+			ret = append(ret, DataProvider{
+				Name:        name,
+				Label:       label,
+				Description: comm,
+			})
+		}
+	}
+
+	return ret
 }
 
 // Inputs returns all variables from `list`.
@@ -222,6 +370,10 @@ func comment(l []*ast.Comment) string {
 		line = strings.TrimSpace(t.Text)
 		line = strings.TrimPrefix(line, "#")
 		line = strings.TrimPrefix(line, "//")
+		line = strings.TrimPrefix(line, "/**")
+		line = strings.TrimPrefix(line, "/*")
+		line = strings.TrimSuffix(line, "**/")
+		line = strings.TrimSuffix(line, "*/")
 		ret += strings.TrimSpace(line) + "\n"
 	}
 

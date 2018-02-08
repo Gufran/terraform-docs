@@ -7,10 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Gufran/terraform-docs/doc"
+	"github.com/Gufran/terraform-docs/print"
 	"github.com/hashicorp/hcl"
 	"github.com/hashicorp/hcl/hcl/ast"
-	"github.com/segmentio/terraform-docs/doc"
-	"github.com/segmentio/terraform-docs/print"
 	"github.com/tj/docopt"
 )
 
@@ -18,28 +18,25 @@ var version = "dev"
 
 const usage = `
   Usage:
-    terraform-docs [--no-required] [json | md | markdown] <path>...
+    terraform-docs [--no-required] [--json] <path>...
     terraform-docs -h | --help
 
   Examples:
 
-    # View inputs and outputs
+    # View inputs and outputs in markdown
     $ terraform-docs ./my-module
 
     # View inputs and outputs for variables.tf and outputs.tf only
     $ terraform-docs variables.tf outputs.tf
 
     # Generate a JSON of inputs and outputs
-    $ terraform-docs json ./my-module
+    $ terraform-docs --json ./my-module
 
-    # Generate markdown tables of inputs and outputs
+    # Generate markdown docs for module
     $ terraform-docs md ./my-module
 
-    # Generate markdown tables of inputs and outputs, but don't print "Required" column
+    # Generate markdown but don't print "Required" column
     $ terraform-docs --no-required md ./my-module
-
-    # Generate markdown tables of inputs and outputs for the given module and ../config.tf
-    $ terraform-docs md ./my-module ../config.tf
 
   Options:
     -h, --help     show help information
@@ -95,14 +92,10 @@ func main() {
 	var out string
 
 	switch {
-	case args["markdown"].(bool):
-		out, err = print.Markdown(doc, printRequired)
-	case args["md"].(bool):
-		out, err = print.Markdown(doc, printRequired)
-	case args["json"].(bool):
+	case args["--json"].(bool):
 		out, err = print.JSON(doc)
 	default:
-		out, err = print.Pretty(doc)
+		out, err = print.Markdown(doc, printRequired)
 	}
 
 	if err != nil {

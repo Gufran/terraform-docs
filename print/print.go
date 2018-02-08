@@ -6,73 +6,120 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/segmentio/terraform-docs/doc"
+	"github.com/Gufran/terraform-docs/doc"
 )
-
-// Pretty printer pretty prints a doc.
-func Pretty(d *doc.Doc) (string, error) {
-	var buf bytes.Buffer
-
-	if len(d.Comment) > 0 {
-		buf.WriteString(fmt.Sprintf("\n%s\n", d.Comment))
-	}
-
-	if len(d.Inputs) > 0 {
-		buf.WriteString("\n")
-
-		for _, i := range d.Inputs {
-			format := "  \033[36mvar.%s\033[0m (%s)\n  \033[90m%s\033[0m\n\n"
-			desc := i.Description
-
-			if desc == "" {
-				desc = "-"
-			}
-
-			buf.WriteString(fmt.Sprintf(format, i.Name, i.Value(), desc))
-		}
-
-		buf.WriteString("\n")
-	}
-
-	if len(d.Outputs) > 0 {
-		buf.WriteString("\n")
-
-		for _, i := range d.Outputs {
-			format := "  \033[36moutput.%s\033[0m\n  \033[90m%s\033[0m\n\n"
-			s := fmt.Sprintf(format, i.Name, strings.TrimSpace(i.Description))
-			buf.WriteString(s)
-		}
-
-		buf.WriteString("\n")
-	}
-
-	return buf.String(), nil
-}
 
 // Markdown prints the given doc as markdown.
 func Markdown(d *doc.Doc, printRequired bool) (string, error) {
 	var buf bytes.Buffer
 
-	if len(d.Comment) > 0 {
-		buf.WriteString(fmt.Sprintf("%s\n", d.Comment))
+	if len(d.Intro) > 0 {
+		for _, v := range d.Intro {
+			buf.WriteString(v + "\n\n")
+		}
+	}
+
+	if len(d.Resources) > 0 || len(d.ResourcesIntro) > 0 {
+		buf.WriteString("\n### Resources\n\n")
+	}
+
+	if len(d.ResourcesIntro) > 0 {
+		for _, i := range d.ResourcesIntro {
+			buf.WriteString(i + "\n\n")
+		}
+	}
+
+	if len(d.Resources) > 0 {
+		buf.WriteString("| Type | Name |\n")
+		buf.WriteString("|------|------|\n")
+		for _, v := range d.Resources {
+			buf.WriteString(fmt.Sprintf("| <div id='resource.%s'></div> `%s` | %s |\n",
+				fmt.Sprintf("%s.%s", v.Name, v.Label),
+				v.Name,
+				v.Label))
+
+			desc := "No Description"
+			if v.Description != "" {
+				desc = normalizeMarkdownDesc(v.Description)
+			}
+			buf.WriteString("| <div class='description'></div> " + desc + " | <div class='empty'></div> |\n")
+		}
+
+		buf.WriteString("\n")
+	}
+
+	buf.WriteString("\n")
+
+	if len(d.DataProviders) > 0 || len(d.DataProvidersIntro) > 0 {
+		buf.WriteString("\n### Data Providers\n\n")
+	}
+
+	if len(d.DataProvidersIntro) > 0 {
+		for _, i := range d.DataProvidersIntro {
+			buf.WriteString(i + "\n\n")
+		}
+	}
+
+	if len(d.DataProviders) > 0 {
+		buf.WriteString("| Type | Name |\n")
+		buf.WriteString("|------|------|\n")
+		for _, v := range d.Resources {
+			buf.WriteString(fmt.Sprintf("| <div id='data.%s'></div> `%s` | %s |\n",
+				fmt.Sprintf("%s.%s", v.Name, v.Label),
+				v.Name,
+				v.Label))
+
+			desc := "No Description"
+			if v.Description != "" {
+				desc = normalizeMarkdownDesc(v.Description)
+			}
+			buf.WriteString("| <div class='description'></div> " + desc + " | <div class='empty'></div> |\n")
+		}
+
+		buf.WriteString("\n")
+	}
+
+	buf.WriteString("\n")
+
+	if len(d.IamPolicies) > 0 || len(d.IamPoliciesIntro) > 0 {
+		buf.WriteString("\n### IAM Policies\n\n")
+	}
+
+	if len(d.IamPoliciesIntro) > 0 {
+		for _, i := range d.IamPoliciesIntro {
+			buf.WriteString(i + "\n\n")
+		}
+	}
+
+	if len(d.IamPolicies) > 0 {
+		for _, v := range d.IamPolicies {
+			buf.WriteString("##### " + v.Name + "\n\n")
+			buf.WriteString("!!! quote \"" + v.Name + " policy document\"\n")
+			for _, l := range strings.Split(v.Description, "\n") {
+				buf.WriteString("    " + l + "\n")
+			}
+
+			buf.WriteString("    ``` json\n")
+			for _, l := range strings.Split(v.Policy, "\n") {
+				buf.WriteString("    " + l + "\n")
+			}
+			buf.WriteString("    ```\n")
+		}
+	}
+
+	if len(d.Inputs) > 0 || len(d.InputsIntro) > 0 {
+		buf.WriteString("\n### Inputs\n\n")
+	}
+
+	if len(d.InputsIntro) > 0 {
+		for _, i := range d.InputsIntro {
+			buf.WriteString(i + "\n\n")
+		}
 	}
 
 	if len(d.Inputs) > 0 {
-		buf.WriteString("\n## Inputs\n\n")
-		buf.WriteString("| Name | Description | Type | Default |")
-
-		if printRequired {
-			buf.WriteString(" Required |\n")
-		} else {
-			buf.WriteString("\n")
-		}
-
-		buf.WriteString("|------|-------------|:----:|:-----:|")
-		if printRequired {
-			buf.WriteString(":-----:|\n")
-		} else {
-			buf.WriteString("\n")
-		}
+		buf.WriteString("| Name | Description | Type |\n")
+		buf.WriteString("|------|-------------|:----:|\n")
 	}
 
 	for _, v := range d.Inputs {
@@ -84,28 +131,31 @@ func Markdown(d *doc.Doc, printRequired bool) (string, error) {
 			def = fmt.Sprintf("`%s`", def)
 		}
 
-		buf.WriteString(fmt.Sprintf("| %s | %s | %s | %s |",
+		buf.WriteString(fmt.Sprintf("| <div id='var.%s'></div> %s | %s | %s |\n",
+			v.Name,
 			v.Name,
 			normalizeMarkdownDesc(v.Description),
-			v.Type,
-			normalizeMarkdownDesc(def)))
+			v.Type))
+	}
 
-		if printRequired {
-			buf.WriteString(fmt.Sprintf(" %v |\n",
-				humanize(v.Default)))
-		} else {
-			buf.WriteString("\n")
+	if len(d.Outputs) > 0 || len(d.OutputsInto) > 0 {
+		buf.WriteString("\n### Outputs\n\n")
+	}
+
+	if len(d.OutputsInto) > 0 {
+		for _, i := range d.OutputsInto {
+			buf.WriteString(i + "\n\n")
 		}
 	}
 
 	if len(d.Outputs) > 0 {
-		buf.WriteString("\n## Outputs\n\n")
 		buf.WriteString("| Name | Description |\n")
 		buf.WriteString("|------|-------------|\n")
 	}
 
 	for _, v := range d.Outputs {
-		buf.WriteString(fmt.Sprintf("| %s | %s |\n",
+		buf.WriteString(fmt.Sprintf("| <div id='output.%s'></div> %s | %s |\n",
+			v.Name,
 			v.Name,
 			normalizeMarkdownDesc(v.Description)))
 	}
