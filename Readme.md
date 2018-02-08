@@ -39,7 +39,42 @@ This repository is a fork of `github.com/segmentio/terraform-docs` with some cha
 
 ## Syntax
 
+Every comment group with `@doc` annotation on first line will be included in documentation, the
+attribute can be written in following ways:
 
+ - `@doc()`: Comment group is the introduction block at the top of the page
+ - `@doc(resource)`: Comment group is the introduction block at the top on *Resources* section
+ - `@doc(data-provider)`: Comment group is the introduction block at the top of *Data Providers* section
+ - `@doc(iam-policy)`: Comment group is the introduction block at the top of *IAM Policies* section
+ - `@doc(input)`: Comment group is the introduction block at the top of *Inputs* section
+ - `@doc(output)`: Comment group is the introduction block at the top of *Outputs* section
+
+All resources, data providers, iam policies, inputs and outputs can further have their own
+description.
+
+For inputs and outputs, the value of `description` attribute is used. If `description` attribute is
+not available or has empty value then the associated comment (see below) is used as description.
+
+For resources, data providers, and iam policies, the associated comment is used.
+
+An associated comment is a comment group immediately followed by a configuration block without any
+line break in between. For example:
+
+``` hcl
+// This comment will be used as description because there is no
+// new line between comment and configuration
+resource "aws_instance" "app" {
+  // configuration...
+}
+
+// This comment will be ignore because it is followed by a line
+// break and then configuration and does not have a valid @doc
+// attribute
+
+data "aws_ami" "app" {
+  // configuration...
+}
+```
 
 [ex]: ./_example/main.tf
 
