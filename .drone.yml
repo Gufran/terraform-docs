@@ -1,0 +1,21 @@
+---
+kind: pipeline
+name: Build
+
+steps:
+- name: build
+  image: golang:1.11
+  commands:
+  - ls -lah
+  - env
+  volumes:
+  - name: gopath
+    path: /go
+  when:
+    event:
+    - push
+    - tag
+    - deploy
+    - deployment
+    - promote
+    - rollback
